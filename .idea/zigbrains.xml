@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="BuildScanner">
+    <option name="projects">
+      <list><![CDATA[{
+  "name": "watchdog",
+  "version": "0.0.0",
+  "path": "/Users/erkib/SourceCode/playgrounds/zig_playground/watchdog",
+  "steps": [
+    {
+      "name": "install",
+      "description": "Copy build artifacts to prefix path",
+      "kind": "install_artifact"
+    },
+    {
+      "name": "uninstall",
+      "description": "Remove build artifacts from prefix path",
+      "kind": "uninstall"
+    },
+    {
+      "name": "run",
+      "description": "Run the app",
+      "kind": "run"
+    },
+    {
+      "name": "test",
+      "description": "Run tests",
+      "kind": "run"
+    }
+  ],
+  "modules": [
+    {
+      "root": "src/root.zig",
+      "public": true,
+      "imports": []
+    },
+    {
+      "root": "src/arguments.zig",
+      "public": true,
+      "imports": []
+    },
+    {
+      "root": "src/notifications.zig",
+      "public": true,
+      "imports": []
+    },
+    {
+      "root": "src/main.zig",
+      "public": false,
+      "imports": [
+        {
+          "name": "watchdog",
+          "owner": 0,
+          "module": 0
+        },
+        {
+          "name": "arguments",
+          "owner": 0,
+          "module": 1
+        },
+        {
+          "name": "notificaions",
+          "owner": 0,
+          "module": 2
+        }
+      ]
+    }
+  ],
+  "dependencies": []
+}]]></list>
+    </option>
+  </component>
+  <component name="ZigToolchain" toolchain="f0334bde-efbe-4d95-aacb-39243910a48f" />
+</project>

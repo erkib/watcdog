@@ -1,0 +1,30 @@
+name: Run project pre-merge checks
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    name: Build and test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Zig
+        uses: korandoru/setup-zig@v1
+        with:
+          zig-version: 0.16.0
+
+      - name: Build project
+        run: zig build
+
+      - name: Run tests
+        run: zig build test

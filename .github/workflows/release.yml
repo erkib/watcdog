@@ -1,0 +1,36 @@
+name: Release watchdog
+run-name: Release v${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release:
+    name: Release watchdog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Zig
+        uses: korandoru/setup-zig@v1
+        with:
+          zig-version: 0.16.0
+
+      - name: Build project and Upload to Assets
+        run: |
+          mkdir -p release/macos release/linux release/windows
+          zig build -Dtarget=x86_64-linux-musl --release=small
+          mv zig-out/bin/watchdog release/linux/
+          zig build -Dtarget=aarch64-macos --release=small
+          mv zig-out/bin/watchdog release/macos/
+          zig build -Dtarget=x86_64-windows --release=small
+          mv zig-out/bin/watchdog.exe release/windows/
+          zip -r watchdog-${{ github.ref_name}}.zip release
+          gh release upload ${{ github.ref_name}} "watchdog-${{ github.ref_name}}.zip"
+          rm watchdog-${{ github.ref_name}}.zip
+          rm -rf release
+        env:
+          GH_TOKEN: ${{ github.token }}
