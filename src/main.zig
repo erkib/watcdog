@@ -22,7 +22,12 @@ pub fn main(init: std.process.Init) !u8 {
         error.InvalidTimeout => {
             try stderr.print(
                 "{s}Error: Invalid timeout value '{s}'. Must be a positive integer.{s}\n",
-                .{wd.COLOR_RED, a.argOrValue orelse "", wd.COLOR_RESET});
+                .{
+                    wd.COLOR_RED,
+                    a.argOrValue orelse "",
+                    wd.COLOR_RESET,
+                },
+            );
             try stderr.flush();
             return 1;
         },
@@ -30,7 +35,12 @@ pub fn main(init: std.process.Init) !u8 {
         error.TimeoutRequiresValue => {
             try stderr.print(
                 "{s}Error: Flag '{s}' requires an integer value.{s}\n",
-                .{wd.COLOR_RED, a.argOrValue orelse "--timeout/-t", wd.COLOR_RESET});
+                .{
+                    wd.COLOR_RED,
+                    a.argOrValue orelse "--timeout/-t",
+                    wd.COLOR_RESET,
+                },
+            );
             try stderr.flush();
             return 1;
         },
@@ -38,7 +48,11 @@ pub fn main(init: std.process.Init) !u8 {
         error.CommandMissing => {
             try stderr.print(
                 "{s}Error: Missing target command. You must provide a command after '--'.{s}\n\n",
-                .{wd.COLOR_RED, wd.COLOR_RESET});
+                .{
+                    wd.COLOR_RED,
+                    wd.COLOR_RESET,
+                },
+            );
             try stderr.flush();
             try wd.printUsage(stdout);
             return 1;
@@ -47,11 +61,16 @@ pub fn main(init: std.process.Init) !u8 {
         error.Unknown => {
             try stderr.print(
                 "{s}Error: Unknown configuration option '{s}'.{s}\n\n",
-                .{wd.COLOR_RED, a.argOrValue orelse "", wd.COLOR_RESET});
+                .{
+                    wd.COLOR_RED,
+                    a.argOrValue orelse "",
+                    wd.COLOR_RESET,
+                },
+            );
             try stderr.flush();
             try wd.printUsage(stdout);
             return 1;
-        }
+        },
     };
 
     // Debug level: Show app config
@@ -59,8 +78,7 @@ pub fn main(init: std.process.Init) !u8 {
         try stdout.print("=== Watchdog Configuration ===\n", .{});
         if (config.timeout_seconds) |t| {
             try stdout.print("• Timeout Limit: {} seconds\n", .{t});
-        }
-        else {
+        } else {
             try stdout.print("• Timeout Limit: None\n", .{});
         }
 
@@ -75,14 +93,20 @@ pub fn main(init: std.process.Init) !u8 {
     // --- STEP 2: SPAWN THE CHILD PROCESS ---
     try stdout.print(
         "{s}{s}🚀 Launching target process...{s}\n\n",
-        .{wd.COLOR_CYAN, wd.COLOR_BOLD, wd.COLOR_RESET});
+        .{
+            wd.COLOR_CYAN,
+            wd.COLOR_BOLD,
+            wd.COLOR_RESET,
+        },
+    );
     try stdout.flush();
 
     // Initialize the child process with our isolated command slice
-    var child = std.process.spawn(init.io, .{ .argv = config.target_argv }) catch |err| {
-        try stderr.print(
-            "{s}❌ Failed to execute command: {}{s}\n",
-            .{wd.COLOR_RED, err, wd.COLOR_RESET});
+    var child = std.process.spawn(
+        init.io,
+        .{ .argv = config.target_argv },
+    ) catch |err| {
+        try stderr.print("{s}❌ Failed to execute command: {}{s}\n", .{ wd.COLOR_RED, err, wd.COLOR_RESET });
         try stderr.flush();
         return 1;
     };
@@ -105,9 +129,7 @@ pub fn main(init: std.process.Init) !u8 {
     // Spawn the process and wait blocks until the child exits.
     // It passes standard input/output/error directly through to your terminal.
     const term = child.wait(init.io) catch |err| {
-        try stderr.print(
-            "{s}❌ Failed to execute command: {}{s}\n",
-            .{wd.COLOR_RED, err, wd.COLOR_RESET});
+        try stderr.print("{s}❌ Failed to execute command: {}{s}\n", .{ wd.COLOR_RED, err, wd.COLOR_RESET });
         try stderr.flush();
         return 1;
     };
@@ -123,7 +145,12 @@ pub fn main(init: std.process.Init) !u8 {
 
     try stdout.print(
         "\n{s}{s}\n📊 === Telemetry Statistics ==={s}\n",
-        .{wd.COLOR_CYAN, wd.COLOR_BOLD, wd.COLOR_RESET});
+        .{
+            wd.COLOR_CYAN,
+            wd.COLOR_BOLD,
+            wd.COLOR_RESET,
+        },
+    );
     try stdout.flush();
 
     // Parse the exit termination status cleanly
@@ -133,29 +160,54 @@ pub fn main(init: std.process.Init) !u8 {
             if (code == 0) {
                 try stdout.print(
                     "• Status: {s}{s}Success (Exit Code 0){s}\n",
-                    .{wd.COLOR_GREEN, wd.COLOR_BOLD, wd.COLOR_RESET});
+                    .{
+                        wd.COLOR_GREEN,
+                        wd.COLOR_BOLD,
+                        wd.COLOR_RESET,
+                    },
+                );
                 is_success = true;
-            }
-            else {
+            } else {
                 try stdout.print(
                     "• Status: {s}{s}Failure (Exit Code {}){s}\n",
-                    . {wd.COLOR_RED, wd.COLOR_BOLD, code, wd.COLOR_RESET});
+                    .{
+                        wd.COLOR_RED,
+                        wd.COLOR_BOLD,
+                        code,
+                        wd.COLOR_RESET,
+                    },
+                );
             }
         },
         .signal => |sig| {
             try stdout.print(
                 "• Status: {s}Terminated by Signal ({}){s}\n",
-                .{wd.COLOR_YEL, sig, wd.COLOR_RESET});
+                .{
+                    wd.COLOR_YEL,
+                    sig,
+                    wd.COLOR_RESET,
+                },
+            );
         },
         .stopped => |sig| {
             try stdout.print(
                 "• Status: {s}Stopped by Signal ({}){s}\n",
-                .{wd.COLOR_YEL, sig, wd.COLOR_RESET});
+                .{
+                    wd.COLOR_YEL,
+                    sig,
+                    wd.COLOR_RESET,
+                },
+            );
         },
         .unknown => |code| {
             try stdout.print(
                 "• Status: {s}Terminated unpredictably (Code {}){s}\n",
-                .{wd.COLOR_RED, code, wd.COLOR_RESET});
+                .{
+                    wd.COLOR_RED,
+                    code,
+                    wd.COLOR_RESET,
+                },
+            );
         },
     }
     try stdout.flush();
@@ -165,16 +217,23 @@ pub fn main(init: std.process.Init) !u8 {
         const seconds = @as(f64, @floatFromInt(elapsed_ms)) / 1000.0;
         try stdout.print(
             "• Execution Time: {s}{d:.2} seconds{s}\n",
-            .{wd.COLOR_BOLD, seconds, wd.COLOR_RESET});
-    }
-    else {
-        try stdout.print(
-            "• Execution Time: {s}{} ms{s}\n",
-            .{wd.COLOR_BOLD, elapsed_ms, wd.COLOR_RESET});
+            .{
+                wd.COLOR_BOLD,
+                seconds,
+                wd.COLOR_RESET,
+            },
+        );
+    } else {
+        try stdout.print("• Execution Time: {s}{} ms{s}\n", .{ wd.COLOR_BOLD, elapsed_ms, wd.COLOR_RESET });
     }
     try stdout.print(
         "{s}{s}================================{s}\n",
-        .{wd.COLOR_CYAN, wd.COLOR_BOLD, wd.COLOR_RESET});
+        .{
+            wd.COLOR_CYAN,
+            wd.COLOR_BOLD,
+            wd.COLOR_RESET,
+        },
+    );
     try stdout.flush();
 
     // --- STEP 5: TRIGGER DESKTOP PUSH NOTIFICATION ---
@@ -189,7 +248,12 @@ pub fn main(init: std.process.Init) !u8 {
     n.sendNotification(init.gpa, init.io, title, message) catch |err| {
         try stderr.print(
             "\n{s}Note: Failed to push OS desktop notification: {}{s}\n",
-            .{wd.COLOR_RED, err, wd.COLOR_RESET});
+            .{
+                wd.COLOR_RED,
+                err,
+                wd.COLOR_RESET,
+            },
+        );
         try stderr.flush();
     };
 

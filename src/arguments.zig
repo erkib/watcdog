@@ -73,10 +73,16 @@ pub fn parseConfig(args: []const []const u8) WatchdogArgumentsError!WatchdogConf
 
 test "parseConfig returns NoArguments when args slice has fewer than 2 elements" {
     const empty_args: []const []const u8 = &.{};
-    try std.testing.expectError(WatchdogArgumentsError.NoArguments, parseConfig(empty_args));
+    try std.testing.expectError(
+        WatchdogArgumentsError.NoArguments,
+        parseConfig(empty_args),
+    );
 
     const single_arg: []const []const u8 = &.{"watchdog"};
-    try std.testing.expectError(WatchdogArgumentsError.NoArguments, parseConfig(single_arg));
+    try std.testing.expectError(
+        WatchdogArgumentsError.NoArguments,
+        parseConfig(single_arg),
+    );
 }
 
 test "parseConfig minimal valid command with separator" {
@@ -146,7 +152,10 @@ test "parseConfig returns CommandMissing when separator is missing" {
     try std.testing.expectError(WatchdogArgumentsError.CommandMissing, parseConfig(args));
 
     const args_with_timeout: []const []const u8 = &.{ "watchdog", "-t", "5" };
-    try std.testing.expectError(WatchdogArgumentsError.CommandMissing, parseConfig(args_with_timeout));
+    try std.testing.expectError(
+        WatchdogArgumentsError.CommandMissing,
+        parseConfig(args_with_timeout),
+    );
 }
 
 test "parseConfig returns CommandMissing when nothing follows separator" {
@@ -154,26 +163,41 @@ test "parseConfig returns CommandMissing when nothing follows separator" {
     try std.testing.expectError(WatchdogArgumentsError.CommandMissing, parseConfig(args));
 
     const args_with_flags: []const []const u8 = &.{ "watchdog", "-d", "--" };
-    try std.testing.expectError(WatchdogArgumentsError.CommandMissing, parseConfig(args_with_flags));
+    try std.testing.expectError(
+        WatchdogArgumentsError.CommandMissing,
+        parseConfig(args_with_flags),
+    );
 }
 
 test "parseConfig returns TimeoutRequiresValue when timeout flag has no argument" {
     const args_short: []const []const u8 = &.{ "watchdog", "-t" };
-    try std.testing.expectError(WatchdogArgumentsError.TimeoutRequiresValue, parseConfig(args_short));
+    try std.testing.expectError(
+        WatchdogArgumentsError.TimeoutRequiresValue,
+        parseConfig(args_short),
+    );
     try std.testing.expectEqualStrings("-t", argOrValue.?);
 
     const args_long: []const []const u8 = &.{ "watchdog", "--timeout" };
-    try std.testing.expectError(WatchdogArgumentsError.TimeoutRequiresValue, parseConfig(args_long));
+    try std.testing.expectError(
+        WatchdogArgumentsError.TimeoutRequiresValue,
+        parseConfig(args_long),
+    );
     try std.testing.expectEqualStrings("--timeout", argOrValue.?);
 }
 
 test "parseConfig returns InvalidTimeout when timeout value is not a valid integer" {
     const args_non_numeric: []const []const u8 = &.{ "watchdog", "-t", "abc", "--", "cmd" };
-    try std.testing.expectError(WatchdogArgumentsError.InvalidTimeout, parseConfig(args_non_numeric));
+    try std.testing.expectError(
+        WatchdogArgumentsError.InvalidTimeout,
+        parseConfig(args_non_numeric),
+    );
     try std.testing.expectEqualStrings("abc", argOrValue.?);
 
     const args_negative: []const []const u8 = &.{ "watchdog", "--timeout", "-10", "--", "cmd" };
-    try std.testing.expectError(WatchdogArgumentsError.InvalidTimeout, parseConfig(args_negative));
+    try std.testing.expectError(
+        WatchdogArgumentsError.InvalidTimeout,
+        parseConfig(args_negative),
+    );
     try std.testing.expectEqualStrings("-10", argOrValue.?);
 }
 
@@ -183,6 +207,9 @@ test "parseConfig returns Unknown when an unrecognized flag or argument is passe
     try std.testing.expectEqualStrings("--unknown", argOrValue.?);
 
     const args_no_separator: []const []const u8 = &.{ "watchdog", "cmd" };
-    try std.testing.expectError(WatchdogArgumentsError.Unknown, parseConfig(args_no_separator));
+    try std.testing.expectError(
+        WatchdogArgumentsError.Unknown,
+        parseConfig(args_no_separator),
+    );
     try std.testing.expectEqualStrings("cmd", argOrValue.?);
 }

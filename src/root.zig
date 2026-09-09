@@ -3,11 +3,11 @@ const std = @import("std");
 
 // ANSI Terminal Escape Codes for Styling
 pub const COLOR_RESET = "\x1b[0m";
-pub const COLOR_BOLD  = "\x1b[1m";
-pub const COLOR_RED   = "\x1b[31m";
+pub const COLOR_BOLD = "\x1b[1m";
+pub const COLOR_RED = "\x1b[31m";
 pub const COLOR_GREEN = "\x1b[32m";
-pub const COLOR_YEL   = "\x1b[33m";
-pub const COLOR_CYAN  = "\x1b[36m";
+pub const COLOR_YEL = "\x1b[33m";
+pub const COLOR_CYAN = "\x1b[36m";
 
 pub const WatchContext = struct {
     child: *std.process.Child,
@@ -45,7 +45,13 @@ pub fn timeoutWatcher(ctx: *WatchContext) !void {
     if (!ctx.is_done) {
         try ctx.stdout.print(
             "\n{s}{s}\n⚠️  [Watchdog] Process exceeded timeout limit of {}s. Sending termination signal...{s}\n",
-            .{COLOR_YEL, COLOR_BOLD, timeout_secs, COLOR_RESET});
+            .{
+                COLOR_YEL,
+                COLOR_BOLD,
+                timeout_secs,
+                COLOR_RESET,
+            },
+        );
         try ctx.stdout.flush();
 
         // Forcibly terminate the running process by sending a signal
