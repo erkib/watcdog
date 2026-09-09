@@ -213,3 +213,78 @@ test "parseConfig returns Unknown when an unrecognized flag or argument is passe
     );
     try std.testing.expectEqualStrings("cmd", argOrValue.?);
 }
+
+test "parseConfig handles timeout zero and u64 max" {
+    const args_zero: []const []const u8 = &.{ "watchdog", "-t", "0", "--", "echo" };
+    const cfg_zero = try parseConfig(args_zero);
+    try std.testing.expectEqual(@as(?u64, 0), cfg_zero.timeout_seconds);
+
+    const args_max: []const []const u8 = &.{ "watchdog", "-t", "18446744073709551615", "--", "echo" };
+    const cfg_max = try parseConfig(args_max);
+    try std.testing.expectEqual(@as(?u64, std.math.maxInt(u64)), cfg_max.timeout_seconds);
+}
+
+test "parseConfig returns InvalidTimeout on u64 overflow" {
+    const args_overflow: []const []const u8 = &.{ "watchdog", "-t", "18446744073709551616", "--", "cmd" };
+    try std.testing.expectError(
+        WatchdogArgumentsError.InvalidTimeout,
+        parseConfig(args_overflow),
+    );
+    try std.testing.expectEqualStrings("18446744073709551616", argOrValue.?);
+}
+
+test "parseConfig handles flags in different orders and multiple occurrences" {
+    const args_order1: []const []const u8 = &.{ "watchdog", "-d", "-t", "10", "--", "cmd" };
+    const cfg1 = try parseConfig(args_order1);
+    try std.testing.expect(cfg1.debug);
+    try std.testing.expectEqual(@as(?u64, 10), cfg1.timeout_seconds);
+
+    const args_order2: []const []const u8 = &.{ "watchdog", "-t", "10", "-d", "--", "cmd" };
+    const cfg2 = try parseConfig(args_order2);
+    try std.testing.expect(cfg2.debug);
+    try std.testing.expectEqual(@as(?u64, 10), cfg2.timeout_seconds);
+
+    // Duplicate flags: last timeout overwrites earlier
+    const args_dup: []const []const u8 = &.{ "watchdog", "-t", "5", "-t", "20", "--", "cmd" };
+    const cfg_dup = try parseConfig(args_dup);
+    try std.testing.expectEqual(@as(?u64, 20), cfg_dup.timeout_seconds);
+}
+
+test "parseConfig handles timeout flag followed by separator" {
+    const args: []const []const u8 = &.{ "watchdog", "-t", "--", "cmd" };
+    try std.testing.expectError(
+        WatchdogArgumentsError.InvalidTimeout,
+        parseConfig(args),
+    );
+    try std.testing.expectEqualStrings("--", argOrValue.?);
+}
+
+test "parseConfig preserves empty target argument and inner separator" {
+    const args_empty_arg: []const []const u8 = &.{ "watchdog", "--", "echo", "" };
+    const cfg_empty = try parseConfig(args_empty_arg);
+    try std.testing.expectEqual(@as(usize, 2), cfg_empty.target_argv.len);
+    try std.testing.expectEqualStrings("echo", cfg_empty.target_argv[0]);
+    try std.testing.expectEqualStrings("", cfg_empty.target_argv[1]);
+
+    const args_inner_sep: []const []const u8 = &.{ "watchdog", "--", "grep", "--", "pattern", "file" };
+    const cfg_inner = try parseConfig(args_inner_sep);
+    try std.testing.expectEqual(@as(usize, 4), cfg_inner.target_argv.len);
+    try std.testing.expectEqualStrings("grep", cfg_inner.target_argv[0]);
+    try std.testing.expectEqualStrings("--", cfg_inner.target_argv[1]);
+    try std.testing.expectEqualStrings("pattern", cfg_inner.target_argv[2]);
+    try std.testing.expectEqualStrings("file", cfg_inner.target_argv[3]);
+}
+
+test "parseConfig argOrValue state resets correctly across calls" {
+    // 1. Unsuccessful call setting argOrValue
+    _ = parseConfig(&.{ "watchdog", "-t", "invalid", "--", "cmd" }) catch {};
+    try std.testing.expectEqualStrings("invalid", argOrValue.?);
+
+    // 2. Successful call
+    const cfg = try parseConfig(&.{ "watchdog", "-t", "10", "--", "cmd" });
+    try std.testing.expectEqual(@as(?u64, 10), cfg.timeout_seconds);
+
+    // 3. Another unsuccessful call
+    _ = parseConfig(&.{ "watchdog", "--bad-flag", "--", "cmd" }) catch {};
+    try std.testing.expectEqualStrings("--bad-flag", argOrValue.?);
+}

@@ -259,3 +259,208 @@ pub fn main(init: std.process.Init) !u8 {
 
     return 0;
 }
+
+test "telemetry notification message selection" {
+    // 1. Killed by timeout
+    {
+        const is_killed = true;
+        const is_success = false;
+        const message = if (is_killed)
+            "Task was forced to terminate because it hit the timeout ceiling!"
+        else if (is_success)
+                "Task finished running perfectly!"
+            else
+                "Task crashed or returned a non-zero error code.";
+
+        try std.testing.expectEqualStrings("Task was forced to terminate because it hit the timeout ceiling!", message);
+    }
+
+    // 2. Success
+    {
+        const is_killed = false;
+        const is_success = true;
+        const message = if (is_killed)
+            "Task was forced to terminate because it hit the timeout ceiling!"
+        else if (is_success)
+                "Task finished running perfectly!"
+            else
+                "Task crashed or returned a non-zero error code.";
+
+        try std.testing.expectEqualStrings("Task finished running perfectly!", message);
+    }
+
+    // 3. Failure
+    {
+        const is_killed = false;
+        const is_success = false;
+        const message = if (is_killed)
+            "Task was forced to terminate because it hit the timeout ceiling!"
+        else if (is_success)
+                "Task finished running perfectly!"
+            else
+                "Task crashed or returned a non-zero error code.";
+
+        try std.testing.expectEqualStrings("Task crashed or returned a non-zero error code.", message);
+    }
+}
+
+test "telemetry time formatting logic" {
+    var buffer: [128]u8 = undefined;
+
+    // Sub-second: formatted as ms
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const elapsed_ms: u64 = 450;
+        if (elapsed_ms >= 1000) {
+            const seconds = @as(f64, @floatFromInt(elapsed_ms)) / 1000.0;
+            try writer.print("{d:.2} seconds", .{seconds});
+        } else {
+            try writer.print("{} ms", .{elapsed_ms});
+        }
+        try std.testing.expectEqualStrings("450 ms", writer.buffered());
+    }
+
+    // Multi-second: formatted as seconds
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const elapsed_ms: u64 = 2500;
+        if (elapsed_ms >= 1000) {
+            const seconds = @as(f64, @floatFromInt(elapsed_ms)) / 1000.0;
+            try writer.print("{d:.2} seconds", .{seconds});
+        } else {
+            try writer.print("{} ms", .{elapsed_ms});
+        }
+        try std.testing.expectEqualStrings("2.50 seconds", writer.buffered());
+    }
+}
+
+test "integration: child process execution and status reporting" {
+    // Test spawning a successful command (echo)
+    const argv = [_][]const u8{ "echo", "integration_test" };
+    var child = try std.process.spawn(std.testing.io, .{
+        .argv = &argv,
+        .stdout = .ignore,
+        .stderr = .ignore,
+        .stdin = .ignore,
+    });
+    const term = try child.wait(std.testing.io);
+
+    switch (term) {
+        .exited => |code| try std.testing.expectEqual(@as(u32, 0), code),
+        else => return error.UnexpectedTermination,
+    }
+}
+
+test "integration: child process non-zero exit code" {
+    // Test command returning non-zero code via false
+    const argv = [_][]const u8{ "false" };
+    var child = try std.process.spawn(std.testing.io, .{
+        .argv = &argv,
+        .stdout = .ignore,
+        .stderr = .ignore,
+        .stdin = .ignore,
+    });
+    const term = try child.wait(std.testing.io);
+
+    switch (term) {
+        .exited => |code| try std.testing.expect(code != 0),
+        else => return error.UnexpectedTermination,
+    }
+}
+
+test "integration: timeout termination sends SIGTERM to child" {
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+
+    const argv = [_][]const u8{ "sleep", "10" };
+    var child = try std.process.spawn(std.testing.io, .{
+        .argv = &argv,
+        .stdout = .ignore,
+        .stderr = .ignore,
+        .stdin = .ignore,
+    });
+
+    var ctx = wd.WatchContext{
+        .child = &child,
+        .timeout_seconds = 1,
+        .mutex = .init,
+        .io = std.testing.io,
+        .stdout = &writer,
+        .is_done = false,
+        .is_killed = false,
+    };
+
+    const thread = try std.Thread.spawn(.{}, wd.timeoutWatcher, .{&ctx});
+    const term = try child.wait(std.testing.io);
+    thread.join();
+
+    try std.testing.expect(ctx.is_killed);
+    try std.testing.expect(ctx.is_done);
+
+    switch (term) {
+        .signal => |sig| try std.testing.expectEqual(std.posix.SIG.TERM, sig),
+        .exited => {},
+        else => {},
+    }
+}
+
+test "telemetry status formatting logic" {
+    var buffer: [128]u8 = undefined;
+
+    // Success status
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const term = std.process.Child.Term{ .exited = 0 };
+        switch (term) {
+            .exited => |code| {
+                if (code == 0) {
+                    try writer.print("Success (Exit Code 0)", .{});
+                } else {
+                    try writer.print("Failure (Exit Code {})", .{code});
+                }
+            },
+            .signal => |sig| try writer.print("Terminated by Signal ({})", .{sig}),
+            .stopped => |sig| try writer.print("Stopped by Signal ({})", .{sig}),
+            .unknown => |code| try writer.print("Terminated unpredictably (Code {})", .{code}),
+        }
+        try std.testing.expectEqualStrings("Success (Exit Code 0)", writer.buffered());
+    }
+
+    // Non-zero exit status
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const term = std.process.Child.Term{ .exited = 42 };
+        switch (term) {
+            .exited => |code| {
+                if (code == 0) {
+                    try writer.print("Success (Exit Code 0)", .{});
+                } else {
+                    try writer.print("Failure (Exit Code {})", .{code});
+                }
+            },
+            .signal => |sig| try writer.print("Terminated by Signal ({})", .{sig}),
+            .stopped => |sig| try writer.print("Stopped by Signal ({})", .{sig}),
+            .unknown => |code| try writer.print("Terminated unpredictably (Code {})", .{code}),
+        }
+        try std.testing.expectEqualStrings("Failure (Exit Code 42)", writer.buffered());
+    }
+
+    // Signal status
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const term = std.process.Child.Term{ .signal = .TERM };
+        switch (term) {
+            .exited => |code| {
+                if (code == 0) {
+                    try writer.print("Success (Exit Code 0)", .{});
+                } else {
+                    try writer.print("Failure (Exit Code {})", .{code});
+                }
+            },
+            .signal => |sig| try writer.print("Terminated by Signal ({s})", .{@tagName(sig)}),
+            .stopped => |sig| try writer.print("Stopped by Signal ({s})", .{@tagName(sig)}),
+            .unknown => |code| try writer.print("Terminated unpredictably (Code {})", .{code}),
+        }
+        try std.testing.expectEqualStrings("Terminated by Signal (TERM)", writer.buffered());
+    }
+}

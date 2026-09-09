@@ -78,3 +78,54 @@ pub fn printUsage(stdout: *std.Io.Writer) !void {
     try stdout.print("{s}", .{usage_text});
     try stdout.flush();
 }
+
+test "printUsage outputs expected text" {
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    try printUsage(&writer);
+    const output = writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, output, "Usage: watchdog") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "-t, --timeout") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "-d, --debug") != null);
+}
+
+test "timeoutWatcher returns immediately when timeout_seconds is null" {
+    var ctx = WatchContext{
+        .child = undefined,
+        .timeout_seconds = null,
+        .mutex = .init,
+        .io = std.testing.io,
+        .stdout = undefined,
+    };
+    try timeoutWatcher(&ctx);
+    try std.testing.expect(!ctx.is_killed);
+    try std.testing.expect(!ctx.is_done);
+}
+
+test "timeoutWatcher exits early when process finishes on time" {
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+
+    var ctx = WatchContext{
+        .child = undefined,
+        .timeout_seconds = 2,
+        .mutex = .init,
+        .io = std.testing.io,
+        .stdout = &writer,
+        .is_done = false,
+        .is_killed = false,
+    };
+
+    const thread = try std.Thread.spawn(.{}, timeoutWatcher, .{&ctx});
+
+    // Simulate child process finishing after 50ms
+    try std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(50), .awake);
+    try ctx.mutex.lock(std.testing.io);
+    ctx.is_done = true;
+    ctx.mutex.unlock(std.testing.io);
+
+    thread.join();
+
+    try std.testing.expect(ctx.is_done);
+    try std.testing.expect(!ctx.is_killed);
+}
