@@ -4,6 +4,12 @@ const a = @import("arguments");
 const n = @import("notificaions");
 const wd = @import("watchdog");
 
+fn timevalToSeconds(tv: anytype) f64 {
+    const sec = if (@hasField(@TypeOf(tv), "sec")) tv.sec else if (@hasField(@TypeOf(tv), "tv_sec")) tv.tv_sec else 0;
+    const usec = if (@hasField(@TypeOf(tv), "usec")) tv.usec else if (@hasField(@TypeOf(tv), "tv_usec")) tv.tv_usec else 0;
+    return @as(f64, @floatFromInt(sec)) + @as(f64, @floatFromInt(usec)) / 1_000_000.0;
+}
+
 pub fn main(init: std.process.Init) !u8 {
     // --- STEP 1: ALLOCATOR & ARGUMENT PARSING ---
     var stdout_buffer: [1024]u8 = undefined;
@@ -228,57 +234,120 @@ pub fn main(init: std.process.Init) !u8 {
         try stdout.print("• Execution Time: {s}{} ms{s}\n", .{ wd.COLOR_BOLD, elapsed_ms, wd.COLOR_RESET });
     }
 
-    // Format the maximum memory usage based on child process rusage
-    const max_rss_bytes: u64 = blk: {
-        if (@hasDecl(std.posix, "getrusage")) {
-            const usage = std.posix.getrusage(-1);
-            const raw_rss = if (usage.maxrss > 0) @as(u64, @intCast(usage.maxrss)) else 0;
-            if (builtin.os.tag.isDarwin()) {
-                break :blk raw_rss;
-            } else {
-                break :blk raw_rss * 1024;
-            }
-        } else {
-            break :blk 0;
-        }
-    };
+    // Format detailed resource usage statistics based on child process rusage
+    if (@hasDecl(std.posix, "getrusage")) {
+        const usage = std.posix.getrusage(-1);
+        const user_cpu_sec = timevalToSeconds(usage.utime);
+        const sys_cpu_sec = timevalToSeconds(usage.stime);
+        const total_cpu_sec = user_cpu_sec + sys_cpu_sec;
+        const elapsed_sec = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000_000.0;
+        const cpu_util_pct = if (elapsed_sec > 0) (total_cpu_sec / elapsed_sec) * 100.0 else 0.0;
 
-    if (max_rss_bytes >= 1024 * 1024 * 1024) {
-        const gb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0 * 1024.0);
         try stdout.print(
-            "• Max Memory Usage: {s}{d:.2} GB{s}\n",
+            "• User CPU Time: {s}{d:.3}s{s}\n",
             .{
                 wd.COLOR_BOLD,
-                gb,
+                user_cpu_sec,
                 wd.COLOR_RESET,
             },
         );
-    } else if (max_rss_bytes >= 1024 * 1024) {
-        const mb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0);
         try stdout.print(
-            "• Max Memory Usage: {s}{d:.2} MB{s}\n",
+            "• System CPU Time: {s}{d:.3}s{s}\n",
             .{
                 wd.COLOR_BOLD,
-                mb,
+                sys_cpu_sec,
                 wd.COLOR_RESET,
             },
         );
-    } else if (max_rss_bytes >= 1024) {
-        const kb = @as(f64, @floatFromInt(max_rss_bytes)) / 1024.0;
         try stdout.print(
-            "• Max Memory Usage: {s}{d:.2} KB{s}\n",
+            "• CPU Utilization: {s}{d:.1}%{s}\n",
             .{
                 wd.COLOR_BOLD,
-                kb,
+                cpu_util_pct,
                 wd.COLOR_RESET,
             },
         );
-    } else {
+
+        // Format the maximum memory usage
+        const raw_rss = if (usage.maxrss > 0) @as(u64, @intCast(usage.maxrss)) else 0;
+        const max_rss_bytes: u64 = if (builtin.os.tag.isDarwin()) raw_rss else raw_rss * 1024;
+
+        if (max_rss_bytes >= 1024 * 1024 * 1024) {
+            const gb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0 * 1024.0);
+            try stdout.print(
+                "• Max Memory Usage: {s}{d:.2} GB{s}\n",
+                .{
+                    wd.COLOR_BOLD,
+                    gb,
+                    wd.COLOR_RESET,
+                },
+            );
+        } else if (max_rss_bytes >= 1024 * 1024) {
+            const mb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0);
+            try stdout.print(
+                "• Max Memory Usage: {s}{d:.2} MB{s}\n",
+                .{
+                    wd.COLOR_BOLD,
+                    mb,
+                    wd.COLOR_RESET,
+                },
+            );
+        } else if (max_rss_bytes >= 1024) {
+            const kb = @as(f64, @floatFromInt(max_rss_bytes)) / 1024.0;
+            try stdout.print(
+                "• Max Memory Usage: {s}{d:.2} KB{s}\n",
+                .{
+                    wd.COLOR_BOLD,
+                    kb,
+                    wd.COLOR_RESET,
+                },
+            );
+        } else {
+            try stdout.print(
+                "• Max Memory Usage: {s}{} bytes{s}\n",
+                .{
+                    wd.COLOR_BOLD,
+                    max_rss_bytes,
+                    wd.COLOR_RESET,
+                },
+            );
+        }
+
+        // Page faults
+        const min_flt = if (usage.minflt > 0) usage.minflt else 0;
+        const maj_flt = if (usage.majflt > 0) usage.majflt else 0;
         try stdout.print(
-            "• Max Memory Usage: {s}{} bytes{s}\n",
+            "• Page Faults: {s}{} minor, {} major{s}\n",
             .{
                 wd.COLOR_BOLD,
-                max_rss_bytes,
+                min_flt,
+                maj_flt,
+                wd.COLOR_RESET,
+            },
+        );
+
+        // Context switches
+        const vcsw = if (usage.nvcsw > 0) usage.nvcsw else 0;
+        const ivcsw = if (usage.nivcsw > 0) usage.nivcsw else 0;
+        try stdout.print(
+            "• Context Switches: {s}{} voluntary, {} involuntary{s}\n",
+            .{
+                wd.COLOR_BOLD,
+                vcsw,
+                ivcsw,
+                wd.COLOR_RESET,
+            },
+        );
+
+        // I/O operations
+        const in_blk = if (usage.inblock > 0) usage.inblock else 0;
+        const out_blk = if (usage.oublock > 0) usage.oublock else 0;
+        try stdout.print(
+            "• I/O Operations: {s}{} input, {} output blocks{s}\n",
+            .{
+                wd.COLOR_BOLD,
+                in_blk,
+                out_blk,
                 wd.COLOR_RESET,
             },
         );
@@ -315,6 +384,60 @@ pub fn main(init: std.process.Init) !u8 {
     };
 
     return 0;
+}
+
+test "telemetry cpu and utilization formatting logic" {
+    var buffer: [128]u8 = undefined;
+
+    // CPU times formatting
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const user_cpu_sec: f64 = 0.045;
+        const sys_cpu_sec: f64 = 0.012;
+        try writer.print("User: {d:.3}s | Sys: {d:.3}s", .{ user_cpu_sec, sys_cpu_sec });
+        try std.testing.expectEqualStrings("User: 0.045s | Sys: 0.012s", writer.buffered());
+    }
+
+    // CPU utilization calculation & formatting
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const total_cpu_sec: f64 = 0.050;
+        const elapsed_sec: f64 = 0.100;
+        const cpu_util_pct = (total_cpu_sec / elapsed_sec) * 100.0;
+        try writer.print("{d:.1}%", .{cpu_util_pct});
+        try std.testing.expectEqualStrings("50.0%", writer.buffered());
+    }
+}
+
+test "telemetry resource metrics formatting logic" {
+    var buffer: [128]u8 = undefined;
+
+    // Page Faults
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const min_flt: usize = 342;
+        const maj_flt: usize = 0;
+        try writer.print("{} minor, {} major", .{ min_flt, maj_flt });
+        try std.testing.expectEqualStrings("342 minor, 0 major", writer.buffered());
+    }
+
+    // Context Switches
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const vcsw: usize = 12;
+        const ivcsw: usize = 3;
+        try writer.print("{} voluntary, {} involuntary", .{ vcsw, ivcsw });
+        try std.testing.expectEqualStrings("12 voluntary, 3 involuntary", writer.buffered());
+    }
+
+    // I/O Operations
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const in_blk: usize = 8;
+        const out_blk: usize = 0;
+        try writer.print("{} input, {} output blocks", .{ in_blk, out_blk });
+        try std.testing.expectEqualStrings("8 input, 0 output blocks", writer.buffered());
+    }
 }
 
 test "telemetry memory formatting logic" {
