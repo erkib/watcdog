@@ -51,6 +51,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    const statMod = b.addModule("statistics", .{
+        .root_source_file = b.path("src/statistics.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "watchdog", .module = mod },
+        },
+    });
+
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
     // to the module defined above, it's sometimes preferable to split business
@@ -92,6 +100,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "watchdog", .module = mod },
                 .{ .name = "arguments", .module = argsMod },
                 .{ .name = "notificaions", .module = notiMod },
+                .{ .name = "statistics", .module = statMod },
             },
         }),
     });
@@ -154,6 +163,12 @@ pub fn build(b: *std.Build) void {
     });
     const run_noti_tests = b.addRunArtifact(noti_tests);
 
+    // Creates an executable that will run `test` blocks from the statistics module.
+    const stat_tests = b.addTest(.{
+        .root_module = statMod,
+    });
+    const run_stat_tests = b.addRunArtifact(stat_tests);
+
     // Creates an executable that will run `test` blocks from the executable's
     // root module. Note that test executables only test one module at a time,
     // hence why we have to create two separate ones.
@@ -169,6 +184,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_args_tests.step);
     test_step.dependOn(&run_noti_tests.step);
+    test_step.dependOn(&run_stat_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
     // Just like flags, top level steps are also listed in the `--help` menu.
