@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const a = @import("arguments");
 const n = @import("notificaions");
 const wd = @import("watchdog");
@@ -226,6 +227,62 @@ pub fn main(init: std.process.Init) !u8 {
     } else {
         try stdout.print("• Execution Time: {s}{} ms{s}\n", .{ wd.COLOR_BOLD, elapsed_ms, wd.COLOR_RESET });
     }
+
+    // Format the maximum memory usage based on child process rusage
+    const max_rss_bytes: u64 = blk: {
+        if (@hasDecl(std.posix, "getrusage")) {
+            const usage = std.posix.getrusage(-1);
+            const raw_rss = if (usage.maxrss > 0) @as(u64, @intCast(usage.maxrss)) else 0;
+            if (builtin.os.tag.isDarwin()) {
+                break :blk raw_rss;
+            } else {
+                break :blk raw_rss * 1024;
+            }
+        } else {
+            break :blk 0;
+        }
+    };
+
+    if (max_rss_bytes >= 1024 * 1024 * 1024) {
+        const gb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0 * 1024.0);
+        try stdout.print(
+            "• Max Memory Usage: {s}{d:.2} GB{s}\n",
+            .{
+                wd.COLOR_BOLD,
+                gb,
+                wd.COLOR_RESET,
+            },
+        );
+    } else if (max_rss_bytes >= 1024 * 1024) {
+        const mb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0);
+        try stdout.print(
+            "• Max Memory Usage: {s}{d:.2} MB{s}\n",
+            .{
+                wd.COLOR_BOLD,
+                mb,
+                wd.COLOR_RESET,
+            },
+        );
+    } else if (max_rss_bytes >= 1024) {
+        const kb = @as(f64, @floatFromInt(max_rss_bytes)) / 1024.0;
+        try stdout.print(
+            "• Max Memory Usage: {s}{d:.2} KB{s}\n",
+            .{
+                wd.COLOR_BOLD,
+                kb,
+                wd.COLOR_RESET,
+            },
+        );
+    } else {
+        try stdout.print(
+            "• Max Memory Usage: {s}{} bytes{s}\n",
+            .{
+                wd.COLOR_BOLD,
+                max_rss_bytes,
+                wd.COLOR_RESET,
+            },
+        );
+    }
     try stdout.print(
         "{s}{s}================================{s}\n",
         .{
@@ -258,6 +315,86 @@ pub fn main(init: std.process.Init) !u8 {
     };
 
     return 0;
+}
+
+test "telemetry memory formatting logic" {
+    var buffer: [128]u8 = undefined;
+
+    // Bytes: formatted as bytes
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const max_rss_bytes: u64 = 512;
+        if (max_rss_bytes >= 1024 * 1024 * 1024) {
+            const gb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0 * 1024.0);
+            try writer.print("{d:.2} GB", .{gb});
+        } else if (max_rss_bytes >= 1024 * 1024) {
+            const mb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0);
+            try writer.print("{d:.2} MB", .{mb});
+        } else if (max_rss_bytes >= 1024) {
+            const kb = @as(f64, @floatFromInt(max_rss_bytes)) / 1024.0;
+            try writer.print("{d:.2} KB", .{kb});
+        } else {
+            try writer.print("{} bytes", .{max_rss_bytes});
+        }
+        try std.testing.expectEqualStrings("512 bytes", writer.buffered());
+    }
+
+    // Kilobytes: formatted as KB
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const max_rss_bytes: u64 = 1024 * 512;
+        if (max_rss_bytes >= 1024 * 1024 * 1024) {
+            const gb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0 * 1024.0);
+            try writer.print("{d:.2} GB", .{gb});
+        } else if (max_rss_bytes >= 1024 * 1024) {
+            const mb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0);
+            try writer.print("{d:.2} MB", .{mb});
+        } else if (max_rss_bytes >= 1024) {
+            const kb = @as(f64, @floatFromInt(max_rss_bytes)) / 1024.0;
+            try writer.print("{d:.2} KB", .{kb});
+        } else {
+            try writer.print("{} bytes", .{max_rss_bytes});
+        }
+        try std.testing.expectEqualStrings("512.00 KB", writer.buffered());
+    }
+
+    // Megabytes: formatted as MB
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const max_rss_bytes: u64 = 1024 * 1024 * 12 + 1024 * 512; // 12.5 MB
+        if (max_rss_bytes >= 1024 * 1024 * 1024) {
+            const gb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0 * 1024.0);
+            try writer.print("{d:.2} GB", .{gb});
+        } else if (max_rss_bytes >= 1024 * 1024) {
+            const mb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0);
+            try writer.print("{d:.2} MB", .{mb});
+        } else if (max_rss_bytes >= 1024) {
+            const kb = @as(f64, @floatFromInt(max_rss_bytes)) / 1024.0;
+            try writer.print("{d:.2} KB", .{kb});
+        } else {
+            try writer.print("{} bytes", .{max_rss_bytes});
+        }
+        try std.testing.expectEqualStrings("12.50 MB", writer.buffered());
+    }
+
+    // Gigabytes: formatted as GB
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        const max_rss_bytes: u64 = 1024 * 1024 * 1024 * 2; // 2.00 GB
+        if (max_rss_bytes >= 1024 * 1024 * 1024) {
+            const gb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0 * 1024.0);
+            try writer.print("{d:.2} GB", .{gb});
+        } else if (max_rss_bytes >= 1024 * 1024) {
+            const mb = @as(f64, @floatFromInt(max_rss_bytes)) / (1024.0 * 1024.0);
+            try writer.print("{d:.2} MB", .{mb});
+        } else if (max_rss_bytes >= 1024) {
+            const kb = @as(f64, @floatFromInt(max_rss_bytes)) / 1024.0;
+            try writer.print("{d:.2} KB", .{kb});
+        } else {
+            try writer.print("{} bytes", .{max_rss_bytes});
+        }
+        try std.testing.expectEqualStrings("2.00 GB", writer.buffered());
+    }
 }
 
 test "telemetry notification message selection" {
@@ -348,6 +485,11 @@ test "integration: child process execution and status reporting" {
     switch (term) {
         .exited => |code| try std.testing.expectEqual(@as(u32, 0), code),
         else => return error.UnexpectedTermination,
+    }
+
+    if (@hasDecl(std.posix, "getrusage")) {
+        const usage = std.posix.getrusage(-1);
+        try std.testing.expect(usage.maxrss >= 0);
     }
 }
 
